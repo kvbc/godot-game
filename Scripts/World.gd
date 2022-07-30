@@ -4,6 +4,7 @@ export var __CHUNK_SIZE = Vector2(128, 128)
 export var __SIMPLEX: OpenSimplexNoise = OpenSimplexNoise.new()
 var __tile_weight = {}
 var __agent_tiles = {}
+var __agents = []
 	
 #  ██     ██  ██████  ██████  ██      ██████  
 #  ██     ██ ██    ██ ██   ██ ██      ██   ██ 
@@ -195,6 +196,9 @@ func __agent_occupy_tiles (agent: Object, agent_size, pos: Vector2):
 				__agent_tiles[agent_id].append(occ)
 		
 func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2):
+	for ag in __agents:
+		__agent_occupy_tiles(ag.agent, ag.size, ag.agent.global_position)
+	
 	var agent_offset = __agent_world_offset(agent_size)
 	
 	var map_start = $TileMap.world_to_map(start + agent_offset)
@@ -203,16 +207,16 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 	if map_start == map_goal:
 		return []
 		
-#	var new_goal = null
-#	for x in range(-agent_size, agent_size + 1):
-#		for y in range(-agent_size, agent_size + 1):
-#			var pos = map_goal + Vector2(x, y)
-#			if __agent_is_valid_tile(agent, agent_size, pos):
-#				if new_goal == null or pos.distance_to(map_goal) < new_goal.distance_to(map_goal):
-#					new_goal = pos
-#	if new_goal == null:
-#		return []
-#	map_goal = new_goal
+	var new_goal = null
+	for x in range(-agent_size, agent_size + 1):
+		for y in range(-agent_size, agent_size + 1):
+			var pos = map_goal + Vector2(x, y)
+			if __agent_is_valid_tile(agent, agent_size, pos):
+				if new_goal == null or pos.distance_to(map_goal) < new_goal.distance_to(map_goal):
+					new_goal = pos
+	if new_goal == null:
+		return []
+	map_goal = new_goal
 	
 	var closed = []
 	var open = {
@@ -224,9 +228,14 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 		}
 	}
 	var q = open[map_start]
+	var best_q = q
 	
 	while true:
-		if q.g > 10:
+		if best_q.f == null or q.f < best_q.f:
+			best_q = q
+		
+		if q.g > 0 or q.pos == map_goal:
+			q = best_q
 			var path = []
 			while true:
 #				path.append(AL_Utils.TilemapMapToWorldCentered($TileMap, q.pos) - agent_offset)
@@ -320,8 +329,11 @@ func IsEntity (node: Node2D):
 func GetPlayer ():
 	return $Player
 	
-func AgentOccupyTiles (agent: Object, agent_size, pos: Vector2):
-	__agent_occupy_tiles(agent, agent_size, pos)
+func AgentRegister (agent: Object, agent_size):
+	__agents.append({
+		"agent": agent,
+		"size": agent_size
+	})
 				
 func AgentGetPath (agent: Object, agent_size, start: Vector2, goal: Vector2):
 	return __agent_get_path(agent, agent_size, start, goal)

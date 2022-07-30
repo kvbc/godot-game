@@ -27,7 +27,7 @@ var __ENTITIES = {
 		scene = preload("res://Scenes/Entity/Zombie.tscn"),
 		max_health = 100,
 		move_speed = 70,
-		base_damage = 10
+		base_damage = 0#10
 	},
 	tree = {
 		scene = preload("res://Scenes/Entity/Tree.tscn"),

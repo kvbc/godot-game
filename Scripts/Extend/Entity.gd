@@ -13,7 +13,6 @@ func ___on_EntityData_DamageTakenEvent ():
 
 func _ready ():
 	___entitydata.connect("DamageTakenEvent", self, "___on_EntityData_DamageTakenEvent")
-	___entitydata.connect("DeathEvent", self, "call_deferred", ["queue_free"])
 
 #
 # Public
