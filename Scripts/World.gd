@@ -4,7 +4,6 @@ export var __CHUNK_SIZE = Vector2(128, 128)
 export var __SIMPLEX: OpenSimplexNoise = OpenSimplexNoise.new()
 var __tile_weight = {}
 var __agent_tiles = {}
-var __old_weights = {}
 	
 #  ██     ██  ██████  ██████  ██      ██████  
 #  ██     ██ ██    ██ ██   ██ ██      ██   ██ 
@@ -108,33 +107,24 @@ func __agent_is_valid_tile (agent: Object, agent_size, tile_pos):
 		return false
 		
 	var agent_id = __agent_id(agent)
-	var tile_weight = __tile_weight[tile_pos]
 	
-	#
-	#
-	# MAKE IT WORK
-	#
-	#
-	
-#	for id in __agent_tiles:
-#		var tiles = __agent_tiles[id]
-#		if tile_pos in tiles:
-#			if id != agent_id:
-#				return __old_weights[tile_pos] >= agent_size
-	
-#	if tile_pos in __agent_tiles.get(agent_id, []):
-#		for id in __agent_tiles:
-#			if id != agent_id:
-#				var tiles = __agent_tiles[id]
-#				if tile_pos in tiles:
-#					return tile_weight >= agent_size
-#
-#		return __old_weights[tile_pos] >= agent_size
-
-	if tile_pos in __agent_tiles.get(agent_id, []):
-		return __old_weights[tile_pos] >= agent_size
+	if tile_pos in __agent_tiles:
+		var t = __agent_tiles[tile_pos]
 		
-	return tile_weight >= agent_size
+		if t.agents.size() == 1:
+			if t.agents[0] == agent_id:
+				return __tile_weight[tile_pos] >= agent_size
+				
+		var m = null
+		for i in t.agents.size():
+			var id = t.agents[i]
+			var w = t.agent_weights[i]
+			if id != agent_id:
+				if m == null or w < m:
+					m = w
+		return m >= agent_size
+		
+	return __tile_weight[tile_pos] >= agent_size
 
 func __agent_get_tile_neighbours (agent: Object, agent_size, map_pos):
 	var neighbours = []
@@ -162,8 +152,6 @@ func __agent_get_tile_neighbours (agent: Object, agent_size, map_pos):
 	if v_up    : neighbours.append(up)
 	if v_down  : neighbours.append(down)
 	
-	# Instead of choosing to walk in a stair-like pattern, walk diagonally
-	
 	if v_up and v_left  and v_upleft  : neighbours.append(upleft)
 	if v_up and v_right and v_upright : neighbours.append(upright)
 		
@@ -176,32 +164,35 @@ func __agent_occupy_tiles (agent: Object, agent_size, pos: Vector2):
 	var agent_id = __agent_id(agent)
 	
 	for occ in __agent_tiles.get(agent_id, []):
-#		if occ in __old_weights:
-		__tile_weight[occ] = __old_weights[occ]
-		__old_weights.erase(occ)
+		var t = __agent_tiles[occ]
+		
+		var i = t.agents.find(agent_id)
+		t.agents.pop_at(i)
+		t.agent_weights.pop_at(i)
+		
+		if t.agents.empty():
+			__agent_tiles.erase(occ)
 			
 	__agent_tiles[agent_id] = []
 	
 	var map_pos = $TileMap.world_to_map(pos + __agent_world_offset(agent_size))
-	var xy_range = range(-agent_size * 2 + 1, agent_size + 1)
+	var xy_range = range(-agent_size + 1, agent_size + 1)
 	for x in xy_range:
 		for y in xy_range:
 			var occ = map_pos + Vector2(x, y)
-			if __tile_weight.get(occ, 0) != 0:
-				var old = occ in __old_weights
-				if not old:
-					__old_weights[occ] = __tile_weight[occ]
+			if occ in __tile_weight:
+				var weight = 0
+				if x > 0 or y > 0:
+					weight = max(abs(x), abs(y))
 					
-				if x >= -agent_size+1 and x <= 0 and y >= -agent_size+1 and y <= 0:
-					for tiles in __agent_tiles.values():
-						if occ in tiles:
-							tiles.erase(occ)
-							
-					__tile_weight[occ] = 0
-					__agent_tiles[agent_id].append(occ)
-				elif not old:
-					__tile_weight[occ] = max(abs(x), abs(y))
-					__agent_tiles[agent_id].append(occ)
+				if not occ in __agent_tiles:
+					__agent_tiles[occ] = {
+						"agents": [],
+						"agent_weights": []
+					}
+				__agent_tiles[occ].agents.append(agent_id)
+				__agent_tiles[occ].agent_weights.append(weight)
+				__agent_tiles[agent_id].append(occ)
 		
 func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2):
 	var agent_offset = __agent_world_offset(agent_size)
@@ -212,27 +203,16 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 	if map_start == map_goal:
 		return []
 		
-	if map_goal in __old_weights:
-		if __old_weights[map_goal] < agent_size:
-			return []
-	else:
-		if __tile_weight[map_goal] < agent_size:
-			return []
-		
-#	if __tile_weight.get(map_goal, 0) < agent_size:
-#		var new_goal = null
-#		for x in range(-agent_size, agent_size + 1):
-#			var br = false
-#			for y in range(-agent_size, agent_size + 1):
-#				var pos = map_goal + Vector2(x, y)
-#				if __tile_weight.get(pos, 0) >= agent_size:
+#	var new_goal = null
+#	for x in range(-agent_size, agent_size + 1):
+#		for y in range(-agent_size, agent_size + 1):
+#			var pos = map_goal + Vector2(x, y)
+#			if __agent_is_valid_tile(agent, agent_size, pos):
+#				if new_goal == null or pos.distance_to(map_goal) < new_goal.distance_to(map_goal):
 #					new_goal = pos
-#					br = true
-#					break
-#			if br: break
-#		if new_goal == null:
-#			return []
-#		map_goal = new_goal
+#	if new_goal == null:
+#		return []
+#	map_goal = new_goal
 	
 	var closed = []
 	var open = {
@@ -246,10 +226,11 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 	var q = open[map_start]
 	
 	while true:
-		if q.pos == map_goal:
+		if q.g > 10:
 			var path = []
 			while true:
-				path.append(AL_Utils.TilemapMapToWorldCentered($TileMap, q.pos) - agent_offset)
+#				path.append(AL_Utils.TilemapMapToWorldCentered($TileMap, q.pos) - agent_offset)
+				path.append($TileMap.map_to_world(q.pos))
 				q = q.parent
 				if q == null:
 					break
@@ -262,15 +243,12 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 		for n in __agent_get_tile_neighbours(agent, agent_size, q.pos):
 			if not n in closed:
 				var g = q.g + 1
-				var h = n.distance_squared_to(map_goal)
+				var h = n.distance_to(map_goal)
 				var f = g + h
 				
-				var open_up = false
-				
+				var open_up = true
 				if n in open:
 					open_up = f < open[n].f
-				else:
-					open_up = __agent_is_valid_tile(agent, agent_size, n)
 					
 				if open_up:
 					open[n] = {
@@ -283,9 +261,6 @@ func __agent_get_path (agent: Object, agent_size, start: Vector2, goal: Vector2)
 		if open.empty():
 			break
 			
-		if open.size() > 50:
-			break
-		
 		q = open.values()[0]
 		for o in open.values():
 			if o.f < q.f:
